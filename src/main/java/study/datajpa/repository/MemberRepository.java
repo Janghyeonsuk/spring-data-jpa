@@ -72,7 +72,7 @@ public interface MemberRepository extends JpaRepository<Member, Long> {
     @QueryHints(value = @QueryHint(name = "org.hibernate.readOnly", value = "true"))
     Member findReadOnlyByUsername(String username);
 
-    //트래픽이 많은 곳에 Lock을 걸면 안됨
+    //트래픽이 많은 곳에 Lock을 걸면 안됨 / 다른 기능 사용
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Member findLockByUsername(String username);
 }
