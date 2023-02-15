@@ -30,6 +30,9 @@ class MemberRepositoryTest {
     MemberRepository memberRepository;
     @Autowired
     TeamRepository teamRepository;
+
+    @Autowired
+    MemberQueryRepository memberQueryRepository;
     @PersistenceContext
     EntityManager em;
 
@@ -310,4 +313,11 @@ class MemberRepositoryTest {
 
         em.flush();
     }
+
+    //사용자 정의 Repository 구현
+    @Test
+    public void callCustom() {
+        List<Member> result = memberRepository.findMemberCustom();
+    }
+
 }
