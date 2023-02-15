@@ -1,13 +1,13 @@
 package study.datajpa.repository;
 
+import org.hibernate.query.NativeQuery;
+import org.hibernate.transform.Transformers;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Slice;
-import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.*;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.test.annotation.Rollback;
 import org.springframework.transaction.annotation.Transactional;
 import study.datajpa.dto.MemberDto;
@@ -318,6 +318,134 @@ class MemberRepositoryTest {
     @Test
     public void callCustom() {
         List<Member> result = memberRepository.findMemberCustom();
+    }
+
+    @Test
+    public void specBasic() throws Exception {
+        //given
+        Team teamA = new Team("teamA");
+        em.persist(teamA);
+
+        Member m1 = new Member("m1", 0, teamA);
+        Member m2 = new Member("m2", 0, teamA);
+        em.persist(m1);
+        em.persist(m2);
+
+        em.flush();
+        em.clear();
+
+        //when
+        Specification<Member> spec =
+                MemberSpec.username("m1").and(MemberSpec.teamName("teamA"));
+        List<Member> result = memberRepository.findAll(spec);
+
+        //then
+        assertThat(result.size()).isEqualTo(1);
+    }
+
+    @Test
+    public void basic() throws Exception {
+        //given
+        Team teamA = new Team("teamA");
+        em.persist(teamA);
+
+        em.persist(new Member("m1", 0, teamA));
+        em.persist(new Member("m2", 0, teamA));
+        em.flush();
+
+        //when
+        //Probe 생성
+        Member member = new Member("m1");
+        Team team = new Team("teamA"); //내부조인으로 teamA 가능
+        member.setTeam(team);
+
+        //ExampleMatcher 생성, age 프로퍼티는 무시
+        ExampleMatcher matcher = ExampleMatcher.matching()
+                .withIgnorePaths("age");
+
+        Example<Member> example = Example.of(member, matcher);
+
+        List<Member> result = memberRepository.findAll(example);
+
+        //then
+        assertThat(result.size()).isEqualTo(1);
+    }
+
+
+    //Projections -> 원하는 데이터만 딱 받아오고 싶을 때
+    @Test
+    public void projections() {
+        //given
+        Team teamA = new Team("teamA");
+        em.persist(teamA);
+
+        em.persist(new Member("m1", 0, teamA));
+        em.persist(new Member("m2", 0, teamA));
+        em.flush();
+
+        //when
+        //프로젝션 대상이 ROOT일때 JPQL SELECT절 최적화
+        List<UserNameOnly> result = memberRepository.findProjectionsByUsername("m1", UserNameOnly.class);//인터페이스로 구현 -> 프록시 객체
+        List<UserNameOnlyDto> resultDto = memberRepository.findProjectionsByUsername("m1", UserNameOnlyDto.class); //클래스로 구현 -> 실제 객체
+
+        //프로젝션 대상이 ROOT가 아니면 LEFT OUTER JOIN 처리 후 모든 필드를 셀렉트해서 엔티티 조회후 계산 -> 최적화 X(중첩구조)
+        List<NestedClosedProjections> nested = memberRepository.findProjectionsByUsername("m1", NestedClosedProjections.class);
+
+        for (UserNameOnly userNameOnly : result) {
+            System.out.println("userNameOnly = " + userNameOnly.getUsername()); //프록시 객체
+        }
+
+        for (UserNameOnlyDto userNameOnlyDto : resultDto) {
+            System.out.println("userNameOnlyDto = " + userNameOnlyDto.getUsername()); //실제 객체
+        }
+
+        for (NestedClosedProjections nestedClosedProjections : nested) {
+            String username = nestedClosedProjections.getUsername();
+            String teamName = nestedClosedProjections.getTeam().getName();
+            System.out.println("username = " + username);
+            System.out.println("teamName = " + teamName);
+        }
+
+    }
+
+    @Test
+    public void nativeQuery() {
+        //given
+        Team teamA = new Team("teamA");
+        em.persist(teamA);
+
+        em.persist(new Member("m1", 0, teamA));
+        em.persist(new Member("m2", 0, teamA));
+        em.flush();
+        em.clear();
+
+        //when
+
+        Member result = memberRepository.findByNativeQuery("m1");
+        System.out.println("result = " + result);
+
+        //Dto
+        Page<MemberProjection> nativeProjection = memberRepository.findByNativeProjection(PageRequest.of(0, 10));
+        List<MemberProjection> content = nativeProjection.getContent();
+
+        for (MemberProjection memberProjection : content) {
+            System.out.println("memberProjection.getId() = " + memberProjection.getId());
+            System.out.println("memberProjection.getUsername() = " + memberProjection.getUsername());
+            System.out.println("memberProjection.getTeamName() = " + memberProjection.getTeamName());
+        }
+    }
+
+    @Test
+    public void dynamicNativeQuery() {
+        //given
+        String sql = "select m.username as username from member m";
+        List<MemberDto> result = em.createNativeQuery(sql)
+                .setFirstResult(0)
+                .setMaxResults(10)
+                .unwrap(NativeQuery.class)
+                .addScalar("username")
+                .setResultTransformer(Transformers.aliasToBean(MemberDto.class))
+                .getResultList();
     }
 
 }
